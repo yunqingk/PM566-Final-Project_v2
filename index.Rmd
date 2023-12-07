@@ -9,4 +9,207 @@ output:
 
 This is my PM566 Final Project website.
 
- 
+# Introduction
+In this project, I'll be analyzing a data set for California housing prices in 1990. This data set contains various features related to housing in different districts in California, such as longitude, latitude, median income, housing median age, median housing value, etc. The questions that I will answer are: 1) is there any correlations between the median income and median housing value; 2) what is the distribution pattern of housing value across California; 3) whether ocean proximity is necessary in this dataset; 4) check if there is correlation between other variables
+
+
+# Interactive visualizations
+```{r setup, message=FALSE, echo=FALSE, warning=FALSE}
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(plotly)
+library(DT)
+library(knitr)
+library(ggplot2)
+library(reshape2)
+
+library(scales) 
+```
+
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+housing <- read_csv("data_folder/housing.csv")
+
+haversine <- function(lat1, lon1, lat2, lon2) {
+  R <- 6371  # Radius of Earth in km
+  phi1 <- lat1 * (pi / 180)
+  phi2 <- lat2 * (pi / 180)
+  delta_phi <- (lat2 - lat1) * (pi / 180)
+  delta_lambda <- (lon2 - lon1) * (pi / 180)
+  
+  a <- sin(delta_phi / 2)^2 + cos(phi1) * cos(phi2) * sin(delta_lambda / 2)^2
+  c <- 2 * atan2(sqrt(a), sqrt(1 - a))
+  d <- R * c
+  return(d * 1000)  # Convert km to m
+}
+
+coordinates <- list(
+  'Los Angeles' = c(34.0522, -118.2437),
+  'San Diego' = c(32.7157, -117.1611),
+  'San Jose' = c(37.3382, -121.8863),
+  'San Francisco' = c(37.7749, -122.4194)
+)
+
+
+for (city in names(coordinates)) {
+  lat <- coordinates[[city]][1]
+  lon <- coordinates[[city]][2]
+  housing[[paste('Distance to', city)]] <- mapply(haversine,housing$latitude, housing$longitude, lat, lon)
+}
+
+```
+
+## 1
+From the correlation matrix, we can see that there is a strong positive correlation between median income and median house value. The higher the income, the more expensive their housing. 
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+#  this is for the first  question
+numeric_housing <- housing[sapply(housing, is.numeric)]
+
+cor_matrix <- cor(numeric_housing, use = "complete.obs")
+
+melted_cor_matrix <- melt(cor_matrix)
+
+
+p <- ggplot(melted_cor_matrix, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name="Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+p
+```
+
+## 2
+I extracted the data that falls into the 40%-60% quantile of median_income data. Then I made this scatter plot to show what is the house value of people with medians of median_income. After adding the trend line, it appears that the housing value of people with income between 30k and 40k is 180000-210000. 
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+#  this is for the second question
+
+
+income_40th_percentile <- quantile(housing$median_income, 0.40)
+income_60th_percentile <- quantile(housing$median_income, 0.60)
+
+
+filtered_data <- housing %>%
+  filter(median_income >= income_40th_percentile & median_income <= income_60th_percentile)
+
+p <- ggplot(filtered_data, aes(x = median_income, y = median_house_value, color = median_house_value)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "blue", high = "red", 
+                       breaks = pretty_breaks(n = 5)(range(filtered_data$median_house_value)), 
+                       labels = scales::label_comma()) + 
+  geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cs"), color = "black") +
+  scale_x_continuous(labels = scales::label_comma()) +
+  scale_y_continuous(labels = scales::label_comma()) + # Add this line to format y axis
+  theme_minimal()
+
+p
+
+```
+
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# this is for third question
+
+fig <- plot_ly(data = housing, x = ~longitude, y = ~latitude, z = ~median_house_value, 
+               type = 'scatter3d', mode = 'markers',
+               marker = list(size = 2, 
+                             color = ~median_house_value, 
+                             colorscale = 'Bluered',  
+                             colorbar = list(title = 'House Price'),
+                             opacity = 0.8))
+
+fig <- fig %>% layout(title = '3D Spatial Distribution of House Prices',
+                      scene = list(xaxis = list(title = 'Longitude'),
+                                   yaxis = list(title = 'Latitude'),
+                                   zaxis = list(title = 'Price')))
+
+fig
+
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# this is for fourth question
+
+housing$`Distance to Los Angeles` <- housing$`Distance to Los Angeles` * 0.000621371
+
+housing$`Distance to San Diego` <- housing$`Distance to San Diego` * 0.000621371
+
+housing$`Distance to San Francisco` <- housing$`Distance to San Francisco` * 0.000621371
+
+housing$`Distance to San Jose` <- housing$`Distance to San Jose` * 0.000621371
+
+
+la_near_housing <- housing %>% 
+  filter(`Distance to Los Angeles` <= 200)
+
+
+p <- ggplot(la_near_housing, aes(x = `Distance to Los Angeles`, y = median_house_value, color = median_house_value)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "blue", high = "red",
+                       breaks = pretty_breaks(n = 5)(range(la_near_housing$median_house_value)), 
+                       labels = label_comma()) +
+  geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cs"), color = "black") +
+  scale_x_continuous(labels = label_comma()) +
+  theme_minimal()
+
+p
+```
+
+
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# for sd 
+sd_near_housing <- housing %>% 
+  filter(`Distance to San Diego` <= 150)
+
+
+p_sd <- ggplot(sd_near_housing, aes(x = `Distance to San Diego`, y = median_house_value, color = median_house_value)) +
+  geom_point(alpha = 0.5) +
+  scale_color_gradient(low = "blue", high = "red",
+                       breaks = pretty_breaks(n = 5)(range(sd_near_housing$median_house_value)), 
+                       labels = label_comma()) +
+  geom_smooth(method = 'gam', formula = y ~ s(x, bs = "cs"), color = "black") +
+  scale_x_continuous(labels = label_comma()) +
+  theme_minimal()
+
+
+```
+
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# this is for fifth question
+
+fig <- plot_ly(data = housing, x = ~longitude, y = ~latitude, z = ~housing_median_age, 
+               type = 'scatter3d', mode = 'markers',
+               marker = list(size = 2, 
+                             color = ~housing_median_age, 
+                             colorscale = 'Bluered',  
+                             colorbar = list(title = 'House age'),
+                             opacity = 0.8))
+
+fig <- fig %>% layout(title = '3D Spatial Distribution of housing_median_age',
+                      scene = list(xaxis = list(title = 'Longitude'),
+                                   yaxis = list(title = 'Latitude'),
+                                   zaxis = list(title = 'housing_median_age')))
+
+
+fig
+
+p <- ggplot(housing, aes(x = housing_median_age)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black") +
+  labs(title = "Histogram of Housing Median Age",
+       x = "Housing Median Age",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+# Report
+Below is the link to my writtern report: 
+[Download PDF](./.pdf)
