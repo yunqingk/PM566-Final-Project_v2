@@ -212,4 +212,4 @@ p <- ggplot(housing, aes(x = housing_median_age)) +
 
 # Report
 Below is the link to my writtern report: 
-[Download PDF](./.pdf)
+[Download PDF](./PM566_Final_Project_ written_report.pdf)
